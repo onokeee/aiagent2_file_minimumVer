@@ -2,8 +2,10 @@
 
   python run.py     ← 通常はこれで起動する
 
-待ち受け先は下の HOST / PORT を直接書き換える（env には書かない運用）。
-社内の他のPCから開けるようにするため、既定を 0.0.0.0 にしてある。
+起動の設定はこのファイルの中だけで完結している（下の HOST / PORT / DEBUG）。
+env や環境変数は見ない。「run.py に書いた値がそのまま使われる」ようにするため。
+特に PORT は他のソフトが環境変数として設定していることがあり、それを読むと
+ここに 8000 と書いてあるのに違うポートで起動する、という事故が起きる。
 
 より頑丈なサーバで動かしたくなったときは、下記も使える（任意）。
 その場合 HOST / PORT はコマンド側で指定するので、ここの値は使われない。
@@ -22,12 +24,10 @@ waitress は元から1プロセスなので、この問題は起きない。
 """
 from __future__ import annotations
 
-import os
-
 from web import create_app
 
 # --- 待ち受け先 -------------------------------------------------------------
-# ここを書き換えれば起動先が変わる。env に書く必要はない。
+# ここを書き換えれば起動先が変わる。
 #
 #   HOST = "0.0.0.0"    社内の他のPCからも開ける（本番はこちら）
 #                       起動後は「サーバのIP:PORT」でアクセスする
@@ -37,11 +37,13 @@ from web import create_app
 HOST = "0.0.0.0"
 PORT = 8000
 
+# エラー画面に詳細を出すか。本番では必ず False のままにすること。
+# True にすると、ブラウザからサーバ上で任意のコードを実行できてしまう。
+DEBUG = False
+
 app = create_app()
 
 if __name__ == "__main__":
     # reloader を切っているのは、二重起動でスケジューラのスレッドが増えるのを避けるため
-    app.run(host=os.getenv("HOST", HOST),
-            port=int(os.getenv("PORT", PORT)),
-            debug=os.getenv("FLASK_DEBUG", "").lower() in ("1", "true"),
+    app.run(host=HOST, port=PORT, debug=DEBUG,
             use_reloader=False, threaded=True)
