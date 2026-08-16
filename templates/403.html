@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}権限がありません — {{ app_title }}{% endblock %}
+{% block heading %}権限がありません{% endblock %}
+{% block subheading %}この画面は管理者だけが開けます。{% endblock %}
+
+{% block body %}
+<div class="content">
+  <div class="card">
+    <div class="alert alert--warn">
+      データカタログ・データ取り込み・モデル設定・メール設定は、変更すると
+      ほかの利用者にも影響するため、管理者のみが開けます。
+    </div>
+    <div class="card__desc mt">
+      必要な場合は管理者に依頼してください。いま
+      <b>{{ user.display_name or user.username }}</b>でログインしています。
+    </div>
+    <div class="row mt">
+      <a class="btn btn--primary" href="{{ url_for('chat.index') }}">チャットに戻る</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

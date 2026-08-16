@@ -1,0 +1,84 @@
+{% from "_icons.html" import icon %}<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{{ app_title }}{% endblock %}</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23b8552f' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><path d='M21 12a8 8 0 0 1-8 8H7l-4 3v-6.5A8 8 0 0 1 11 4h2a8 8 0 0 1 8 8Z'/></svg>">
+{# タブのアイコン。無いとブラウザが /favicon.ico を取りに来て 404 がログに残り続ける #}
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27%3E%3Cellipse cx=%2712%27 cy=%275.5%27 rx=%277.5%27 ry=%272.8%27 fill=%27none%27 stroke=%27%23b8552f%27 stroke-width=%271.8%27/%3E%3Cpath d=%27M4.5 5.5v6c0 1.55 3.36 2.8 7.5 2.8s7.5-1.25 7.5-2.8v-6M4.5 11.5v6c0 1.55 3.36 2.8 7.5 2.8s7.5-1.25 7.5-2.8v-6%27 fill=%27none%27 stroke=%27%23b8552f%27 stroke-width=%271.8%27/%3E%3C/svg%3E">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+{% block head %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+{% include "_icons.html" %}
+<div class="layout">
+  <aside class="sidebar" id="sidebar">
+    {# 管理者以外はチャットしか使えないので、行き先が1つだけのメニューは出さない。
+       URLを直に叩かれても admin_required で止まるので、ここは見た目の整理。 #}
+    {# 各画面が何をする所かは data-desc に持たせ、マウスを乗せたときに出す。
+       画面の上に固定で置くと、毎回読むものでもないのに場所だけ取り続けるため。
+       吹き出しは body 直下に描かれるので、サイドバーの幅で切れない。 #}
+    {% if user.is_admin %}
+    <div class="sidebar__section">
+      <a class="navlink {{ 'is-active' if nav.startswith('chat.') }}" href="{{ url_for('chat.index') }}"
+         data-desc="データについて日本語で質問すると、AIがSQLを書いて答えます。">
+        {{ icon('chat') }} チャット</a>
+      <a class="navlink {{ 'is-active' if nav.startswith('catalog.') or nav.startswith('imp.') }}" href="{{ url_for('catalog.index') }}"
+         data-desc="DBとテーブルの説明・結合・用語・例文・ツール・取り込み。ここに書いた内容がそのまま AI の理解になります。">
+        {{ icon('catalog') }} データカタログ</a>
+      <a class="navlink {{ 'is-active' if nav.startswith('models.') }}" href="{{ url_for('models.index') }}"
+         data-desc="チャット画面で選べるモデルを決めます。">
+        {{ icon('model') }} モデル設定</a>
+      <a class="navlink {{ 'is-active' if nav.startswith('mail.') }}" href="{{ url_for('mail.index') }}"
+         data-desc="送信サーバ・差出人・送ってよい宛先を決めます。">
+        {{ icon('mail') }} メール設定</a>
+    </div>
+    {% endif %}
+
+    {% block sidebar %}{% endblock %}
+
+    <div class="spacer"></div>
+    <div class="sidebar__section">
+      <div class="sidebar__user">{{ icon('user', 'icon--sm') }}
+        <span>{{ user.display_name or user.username }}</span></div>
+      <div class="small muted mb">{{ user.username }}{% if user.groups %}／{{ user.groups|join(', ') }}{% endif %}</div>
+      <form method="post" action="{{ url_for('auth.logout') }}">
+        <button class="btn btn--sm" style="width:100%">ログアウト</button>
+      </form>
+    </div>
+  </aside>
+
+  {# サイドバーの境目。ドラッグで幅を変え、クリックで折りたたむ。 #}
+  <div class="resizer" id="sidebarResizer" role="separator" tabindex="0"
+       aria-label="サイドバーの幅を変える"
+       data-tip="クリックして折りたたむ　ドラッグしてサイズ変更"
+       data-tip-open="クリックして開く　ドラッグしてサイズ変更"></div>
+
+  <div class="main">
+    {# 見出しを持たない画面では、その場所ごと出さない。空の見出しを置くと
+       そのぶん本文が下がるだけになる。画面の説明はサイドバーの項目に
+       マウスを乗せると出る（data-desc）。 #}
+    {% set _h = self.heading() | trim %}
+    {% set _s = self.subheading() | trim %}
+    {% set _a = self.actions() | trim %}
+    {% if _h or _s or _a %}
+    <header class="topbar">
+      {% if _h or _s %}
+      <div>
+        {% if _h %}<h1>{% block heading %}{% endblock %}</h1>{% endif %}
+        {% if _s %}<div class="sub">{% block subheading %}{% endblock %}</div>{% endif %}
+      </div>
+      {% endif %}
+      {% if _a %}<div>{% block actions %}{% endblock %}</div>{% endif %}
+    </header>
+    {% endif %}
+    {% block body %}{% endblock %}
+  </div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+<script src="{{ url_for('static', filename='js/common.js') }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

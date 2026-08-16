@@ -1,0 +1,41 @@
+# 秘密情報（実APIキーを含むため絶対にコミットしない）
+env
+.env
+!env.example
+.streamlit/secrets.toml
+
+# Python キャッシュ / 仮想環境
+__pycache__/
+*.pyc
+.venv/
+venv/
+.ruff_cache/
+
+# ローカルデータ（DB本体はコミットしない）
+# ※ data/ とディレクトリごと無視すると中の !再包含が効かないため data/* にする
+data/*
+# ただしメタ情報(人間の知識)と説明書はgit管理する
+!data/*.meta.yaml
+!data/.gitkeep
+# ユーザーごとのデータ（チャット履歴・画面の状態）は共有しない
+# ※ データカタログは data/*.meta.yaml として全員共通で git 管理する
+data/users/
+
+# ローカル認証のユーザー定義（パスワードハッシュを含む）
+auth_users.yaml
+
+# 取り込み元に置いたファイルは各自のデータなので共有しない
+import/*
+!import/.gitkeep
+
+# Flaskのセッション署名鍵（自動生成・環境ごとに違う）
+.flask_secret
+
+# 画面から追加した取り込み元フォルダ（環境ごとに違う）
+data/import_dirs.yaml
+
+# アプリの説明書は公開しない（手元には残す）
+README.md
+.build/docs/
+data/README.txt
+import/README.md

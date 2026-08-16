@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}メール設定 — {{ app_title }}{% endblock %}
+{# 見出しは置かない。画面の説明はサイドバーの項目にマウスを乗せると出る #}
+
+{% block body %}
+<div class="content">
+  <div id="banner"></div>
+
+  <div class="card">
+    <div class="card__title">送信サーバ</div>
+    <div class="card__desc">
+      社内リレー宛にそのまま送ります（暗号化・認証なし）。
+      分からない場合は情報システム部門に確認してください。
+      保存するとすぐ反映されます（再起動は不要）。
+    </div>
+    <div class="row mb">
+      <div class="grow" style="max-width:360px">
+        <label class="field">ホスト名</label>
+        <input type="text" id="host" placeholder="例: relay.example.co.jp">
+      </div>
+      <div style="width:120px">
+        <label class="field">ポート</label>
+        <input type="number" id="port" min="1" max="65535" placeholder="25">
+      </div>
+      <div style="width:140px">
+        <label class="field">タイムアウト（秒）</label>
+        <input type="number" id="timeout" min="1" max="300" placeholder="20">
+      </div>
+    </div>
+    <div id="serverInfo"></div>
+  </div>
+
+  <div class="card">
+    <div class="card__title">差出人</div>
+    <div class="card__desc">
+      メールの From になるアドレスです。複数を登録しておき、使うものを1つ選びます。
+      SMTPサーバによっては、認証したアカウント以外のアドレスでは送信を拒否されます。
+    </div>
+    <div class="row mb">
+      <div style="width:280px">
+        <label class="field">使用する差出人</label>
+        <select id="sender"></select>
+      </div>
+      <div style="width:280px">
+        <label class="field">差出人の表示名</label>
+        <input type="text" id="senderName" placeholder="例: 営業企画部 BIレポート">
+      </div>
+    </div>
+    <label class="field">差出人アドレスの候補</label>
+    <div id="senderList"></div>
+    <div class="row mt">
+      <input type="text" id="newSender" class="grow" style="max-width:360px"
+             placeholder="例: bi-report@example.co.jp">
+      <button class="btn btn--sm" id="addSender">＋ 追加</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card__title">送信できる宛先</div>
+    <div class="card__desc">
+      ここに登録したアドレスにだけ送れます。<b>1件も登録していないあいだは、どこにも送れません。</b>
+      登録できるドメインは <code>env</code> の <code>SEND_OK_MAIL_DOMAIN</code> で決まります。
+    </div>
+    <div id="allowState"></div>
+
+    <div class="mt" style="max-width:520px">
+      <label class="field">送信を許可するアドレス</label>
+      <div id="addrList"></div>
+      <div class="row mt">
+        <input type="text" id="newAddr" class="grow" placeholder="例: tanaka@example.co.jp">
+        <button class="btn btn--sm" id="addAddr">追加</button>
+      </div>
+      <div class="small muted mt" id="domainNote"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card__title">定期取り込みの失敗を知らせる先（管理者）</div>
+    <div class="card__desc">
+      定期取り込みが<b>設定どおりに更新できなくなったとき</b>（取り込み元のファイルが無い・
+      シート名や列が変わった・自動実行が止まっている等）に、ここへメールで知らせます。<br>
+      送るのは状態が変わった瞬間の1回だけです（失敗が続く間は繰り返しません）。直ったら「復旧」を1回送ります。
+      登録できるドメインは宛先と同じ縛りです。空のままなら通知しません。
+    </div>
+    <div class="mt" style="max-width:520px">
+      <label class="field">通知先のアドレス</label>
+      <div id="alertList"></div>
+      <div class="row mt">
+        <input type="text" id="newAlert" class="grow" placeholder="例: admin@example.co.jp">
+        <button class="btn btn--sm" id="addAlert">追加</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card__title">送信のしかた</div>
+    <div class="row mb">
+      <div style="width:240px">
+        <label class="field">一度に送れる宛先の数</label>
+        <input type="number" id="maxRecipients" min="1" max="500">
+      </div>
+      <div class="grow">
+        <label class="field">動作</label>
+        <label class="check">
+          <input type="checkbox" id="dryRun">
+          <span>テスト送信モード（実際には送らず、内容の確認だけ）</span>
+        </label>
+      </div>
+    </div>
+    <div id="dryNote"></div>
+  </div>
+
+  <div class="row mb">
+    <button class="btn btn--primary" id="save">設定を保存</button>
+    <button class="btn" id="test">送信サーバへの接続を確認</button>
+    <div class="spacer"></div>
+    <button class="btn btn--ghost btn--sm" id="reload">読み直す</button>
+  </div>
+
+  <details class="acc">
+    <summary>送信の記録<span class="badge" id="logCount">0</span></summary>
+    <div class="acc__body" id="logList"></div>
+  </details>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+window.MAIL = {{ status|tojson }};
+window.MAIL_LOG = {{ log|tojson }};
+window.IS_ADMIN = {{ user.is_admin|tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/mail.js') }}"></script>
+{% endblock %}

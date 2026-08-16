@@ -1,0 +1,418 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}データカタログ — {{ app_title }}{% endblock %}
+{# 見出しは置かない。画面の説明はサイドバーの項目にマウスを乗せると出る #}
+
+
+{% block body %}
+<div class="content content--wide">
+{% if not target %}
+  <div class="empty">
+    <div class="empty__icon">{{ icon('database') }}</div>
+    <div>data/ に .db ファイルがありません。</div>
+    <div class="mt"><a class="btn btn--primary" href="{{ url_for('imp.index') }}">データを取り込む</a></div>
+  </div>
+{% else %}
+
+  {% for w in drift %}<div class="alert alert--warn">{{ w }}</div>{% endfor %}
+
+  {# タブ・充実度・DB選択を1本の帯にまとめる。段を分けるとそれだけで
+     縦を60px以上使い、いちばん見たいテーブル一覧が画面から押し出される。
+     充実度はクリックでそのタブへ移動する（テーブル説明は未記入だけに絞って開く）。 #}
+  <div class="tabs tabs--bar">
+    <button class="tab is-active" data-pane="tables">DB・テーブル</button>
+    <button class="tab" data-pane="er">結合・ER図</button>
+    <button class="tab" data-pane="glossary">用語集・例文</button>
+    <button class="tab" data-pane="tools">ツール</button>
+    <a class="tab" href="{{ url_for('imp.index') }}">取り込み</a>
+
+    <div class="tabs__end">
+      <div class="metrics metrics--inline">
+        <button class="metric metric--link" data-jump="tables" data-filter="missing"
+                title="クリックで、説明が未記入のテーブルだけを表示">
+          <div class="metric__label">テーブル説明</div>
+          <div class="metric__value" id="mTables">{{ coverage.tables[0] }}/{{ coverage.tables[1] }}</div></button>
+        <button class="metric metric--link" data-jump="tables" title="クリックでテーブル一覧へ">
+          <div class="metric__label">列の説明</div>
+          <div class="metric__value" id="mCols">{{ coverage.columns[0] }}/{{ coverage.columns[1] }}</div></button>
+        <button class="metric metric--link" data-jump="er" title="クリックで結合・ER図へ">
+          <div class="metric__label">結合定義</div>
+          <div class="metric__value">{{ coverage.relationships }}</div></button>
+        <button class="metric metric--link" data-jump="glossary" data-sec="gl" title="クリックで用語集へ">
+          <div class="metric__label">用語集</div>
+          <div class="metric__value" id="mGloss">{{ coverage.glossary }}</div></button>
+        <button class="metric metric--link" data-jump="glossary" data-sec="ex" title="クリックで例文へ">
+          <div class="metric__label">例文</div>
+          <div class="metric__value" id="mEx">{{ coverage.examples }}</div></button>
+      </div>
+      <select id="dbSel" style="width:auto">
+        {% for f in db_files %}<option value="{{ f }}" {{ 'selected' if f == target }}>{{ f }}</option>{% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <!-- ================= DB・テーブル ================= -->
+  <div class="tabpane is-active" id="pane-tables">
+    {# 定期取り込みの全体状態（DBに紐づかない）。スケジューラが止まっているときの警告と、
+       対象テーブルが無くなった設定の始末。正常なら何も出ない。中身は manage.js が描く #}
+    <div id="schedBanner"></div>
+    <div id="orphanJobs"></div>
+
+    {# DB全体の説明。ふだん見るのはテーブル一覧なので畳んでおく。
+       別タブに分けていたが、DBを選んだときに真っ先に書く所なので同じ面に置く。 #}
+    <details class="acc acc--db" id="dbInfo">
+      <summary>
+        <strong>このDBについて</strong>
+        <span class="muted small">{{ title or 'タイトル未設定' }}</span>
+        {% if not description %}<span class="badge badge--warn">説明なし</span>{% endif %}
+      </summary>
+      <div class="acc__body">
+        <label class="field">タイトル</label>
+        <input type="text" id="dbTitle" value="{{ title }}" placeholder="例）販売管理DB">
+        <div style="height:10px"></div>
+        <label class="field">説明
+          <span class="muted" style="font-weight:400">— 何のデータか。AIが知らないと間違える前提は「※」で始める行に</span></label>
+        {# この文章がそのままAIの理解になる。空のときは薄地の例文で書き方を示す #}
+        <textarea id="dbDesc" rows="5" placeholder="例）受注・請求・入金。顧客と担当者は demo_master 側にある。
+※ 金額列を持つのは order_items（明細）。orders に金額は無いので必ず明細を集計する。
+※ order_date は 'YYYY-MM-DD' の文字列。月で切るなら strftime('%Y-%m', order_date)。">{{ description }}</textarea>
+        <div class="mt"><button class="btn btn--primary btn--sm" id="infoSave">保存</button></div>
+        <div class="small muted mt">
+          メタ情報ファイル: <code>data/{{ target }}.meta.yaml</code>（全員共通・管理者のみ編集）
+        </div>
+        {# DBそのものの管理（サイズ・更新日・削除）。中身は manage.js が /api/import/manage から描く #}
+        <div class="row mt" style="align-items:center" id="dbManageRow">
+          <span class="small muted" id="dbManageInfo">読み込み中…</span>
+          <div class="spacer"></div>
+          <span id="dbDeleteSlot"></span>
+        </div>
+      </div>
+    </details>
+
+    {# 目当てのテーブル・列を探すための道具。説明や実際の値の中身も検索対象 #}
+    <div class="row mb" style="align-items:center">
+      <input type="text" id="tblFilter" style="max-width:320px"
+             placeholder="テーブル・列・説明・実際の値で絞り込み">
+      <button class="btn btn--sm" id="tblMissing"
+              title="テーブルの説明が空のものだけを表示">説明なしだけ</button>
+      <div class="spacer"></div>
+      <button class="btn btn--ghost btn--sm" id="tblOpenAll">すべて開く</button>
+      <button class="btn btn--ghost btn--sm" id="tblCloseAll">すべて閉じる</button>
+    </div>
+    <div class="small muted mb hidden" id="tblFilterInfo"></div>
+    {% for t in tables %}
+    <details class="acc" data-table="{{ t.name }}">
+      <summary>
+        <strong>{{ t.name }}</strong>
+        <span class="muted small">{{ '{:,}'.format(t.rows) if t.rows is not none else '行数不明' }} / {{ t.columns|length }}列</span>
+        {% if t.description %}<span class="badge badge--ok">説明あり</span>
+        {% else %}<span class="badge badge--warn">説明なし</span>{% endif %}
+        {% if t.ai_draft %}<span class="badge badge--accent">AI下書き・未確認</span>{% endif %}
+      </summary>
+      <div class="acc__body">
+        <div class="row mb">
+          <div class="grow">
+            <label class="field">テーブルの説明（1行 = 何のレコードか）</label>
+            <textarea class="t-desc" rows="2">{{ t.description }}</textarea>
+          </div>
+          <button class="btn btn--sm t-draft" {{ 'disabled' if not llm_ready }}>AIに下書きさせる</button>
+        </div>
+        <div class="tablewrap mb">
+          <table class="data">
+            <thead><tr><th>列</th><th>型</th><th>説明</th><th>コード値の意味</th><th>実際の値</th></tr></thead>
+            <tbody>
+            {% for c in t.columns %}
+              <tr data-col="{{ c.name }}">
+                <td>{{ c.name }}{% if c.pk %} <span class="badge">PK</span>{% endif %}</td>
+                <td class="muted">{{ c.type }}</td>
+                <td style="min-width:240px"><input type="text" class="c-desc" value="{{ c.description }}"></td>
+                <td style="min-width:200px"><input type="text" class="c-vals"
+                    value="{% for k, v in c.codes.items() %}{{ k }}={{ v }}{{ '; ' if not loop.last }}{% endfor %}"
+                    placeholder="1=受付; 2=出荷済"></td>
+                <td class="muted" title="{{ c.actual }}">{{ c.actual }}</td>
+              </tr>
+            {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        <button class="btn btn--primary btn--sm t-save">このテーブルを保存</button>
+        {% if t.sample_rows %}
+        <details class="acc mt">
+          <summary>サンプル行を見る</summary>
+          <div class="acc__body">
+          {# 先頭数行だけでは判断できないので、全行を別タブで開く入口を必ず置く #}
+          <div class="row mb" style="align-items:center">
+            <span class="small muted">先頭 {{ t.sample_rows|length }} 行のみ</span>
+            <div class="spacer"></div>
+            <a class="btn btn--sm btn--ghost" target="_blank" rel="noopener"
+               title="{{ t.name }} の全行を別タブで開きます（読み取り専用）"
+               href="{{ url_for('tableview.index') }}?db={{ target|urlencode }}&table={{ t.name|urlencode }}"
+               >{{ icon('table', 'icon--sm') }}テーブル全体を閲覧</a>
+          </div>
+          <div class="tablewrap"><table class="data">
+            <thead><tr>{% for c in t.sample_columns %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+            <tbody>{% for r in t.sample_rows %}<tr>{% for v in r %}<td>{{ v }}</td>{% endfor %}</tr>{% endfor %}</tbody>
+          </table></div></div>
+        </details>
+        {% endif %}
+        {# 管理（取り込み元・定期取り込み・更新履歴・削除）。開いたときに manage.js が描く #}
+        <details class="acc mt t-manage" data-table="{{ t.name }}">
+          <summary>管理（取り込み元・定期取り込み・更新履歴・削除）</summary>
+          <div class="acc__body t-manage__body"><div class="small muted">読み込み中…</div></div>
+        </details>
+      </div>
+    </details>
+    {% endfor %}
+  </div>
+
+  <!-- ================= ER図 ================= -->
+  <div class="tabpane" id="pane-er">
+    <div class="er" id="erRoot">
+      <div class="er__toolbar">
+        {# 保存・元に戻す・やり直す。ツールチップの中身は er.js の syncHistoryUi が
+           「次に何を戻すか」に合わせて書き換える #}
+        <span class="er__tools">
+          <button class="btn btn--sm btn--icon hastip hastip--l" id="erSave" disabled
+                  aria-label="配置を保存" data-tip="配置を保存（Ctrl+S）">{{ icon('save') }}</button>
+          <button class="btn btn--sm btn--icon hastip hastip--l" id="erUndo" disabled
+                  aria-label="元に戻す" data-tip="元に戻す（Ctrl+Z）">{{ icon('undo') }}</button>
+          <button class="btn btn--sm btn--icon hastip hastip--l" id="erRedo" disabled
+                  aria-label="やり直す" data-tip="やり直す（Ctrl+Y）">{{ icon('redo') }}</button>
+        </span>
+        <button class="btn btn--sm" id="erFull">全画面</button>
+        <button class="btn btn--sm hastip" id="erUsage" disabled
+                data-tip="過去の分析（チャット履歴）で実際に使われた結合を重ねます。&#10;色が濃いほどよく使われる結合、薄い灰色＝一度も使われていない結合。&#10;線の上に累積の使用回数が出ます。&#10;使われていない結合は、数字の検算もされていない経路です。">利用状況</button>
+        <button class="btn btn--sm hastip" id="erExt"
+                data-tip="他のDBのテーブルをこの図に置きます。&#10;置いたテーブルとは、同じようにドラッグして関連を作れます。">他DBのテーブル</button>
+        <button class="btn btn--sm hastip hidden" id="erIncoming"
+                data-tip="他のDBから、このDBを参照している関連を出します。&#10;マスタ系のDBは参照される数が多いので、既定では隠しています。">参照元を表示</button>
+      </div>
+      <div class="er__viewport" id="erViewport">
+        <svg class="er__svg" id="erSvg"></svg>
+        <div class="er__world" id="erWorld"></div>
+      </div>
+      <div class="er__legend">
+        <b>IPA表記</b>　<u>下線</u>＝主キー　<u style="text-decoration-style:dashed">破線</u>＝外部キー
+        線の両端の <b>1</b>・<b>*</b>＝多重度　実線＝登録済み／短い破線＝FOREIGN KEY
+        <span style="color:var(--cross);font-weight:700">長い破線</span>＝DBをまたぐ関連
+        <span id="erUsageLegend" class="hidden">　｜　<b>利用状況</b>:
+          線の色が濃いほど分析でよく使われた結合　薄い灰色＝未使用（検算されていない経路）。
+          線の上の数字は累積の使用回数</span>
+      </div>
+      <div class="er__panel hidden" id="erPanel"></div>
+    </div>
+    <div class="small muted mt">
+      列の右端から相手テーブルの列へドラッグ＝関連を作成 ／ 線をクリック＝多重度・削除 ／
+      テーブル見出しをドラッグ＝移動 ／ 何もない所をドラッグ＝画面移動 ／ ホイール＝拡大縮小
+      <br>左上の {{ icon('undo', 'icon--sm') }} {{ icon('redo', 'icon--sm') }} で、移動・関連・主キー・他DBテーブルの出し入れをすべて1手ずつ戻す／やり直す（Ctrl+Z / Ctrl+Y）。
+      {{ icon('save', 'icon--sm') }} はテーブルの配置を保存（Ctrl+S。関連などは操作した時点で保存済み）
+      <br>破線の枠＝他のDBから借りたテーブル（中身の編集はそのDBのカタログで）
+    </div>
+
+    {% if suggestions %}
+    <div class="card mt">
+      <div class="card__title">関連の候補（列名からの推測）</div>
+      {% for s in suggestions %}
+        <div class="row" style="align-items:center;margin-bottom:6px">
+          <code class="grow">{{ s['from'] }} → {{ s['to'] }}</code>
+          <span class="muted small">{{ s.reason }}</span>
+          <button class="btn btn--sm sug-add" data-from="{{ s['from'] }}" data-to="{{ s['to'] }}"
+                  data-card="{{ s['cardinality'] }}">登録</button>
+        </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ================= 用語集・例文 ================= -->
+  <div class="tabpane" id="pane-glossary">
+    {# 用語集と例文は編集する場面が別なので、切り替えて片方ずつ広く使う #}
+    <div class="seg mb">
+      <button type="button" class="seg__btn is-active" data-sec="gl">業務用語 <span class="seg__count" id="segGlN">0</span></button>
+      <button type="button" class="seg__btn" data-sec="ex">質問とSQLの例文 <span class="seg__count" id="segExN">0</span></button>
+      <button type="button" class="seg__btn" data-sec="ck">検算 <span class="seg__count" id="segCkN">0</span></button>
+    </div>
+
+    <div id="sec-gl">
+      <div class="card">
+        <div class="card__desc">
+          質問にこの言葉が出ると、AIはこの定義に従います。<b>説明は自然言語で構いません。</b>
+          SQL式を入れておくとその式をそのまま使い、空欄なら説明からAIが組み立てます。
+          置き場所は、その用語が使うテーブルを選び、複数テーブルにまたがるものだけ「DB全体」にします。
+        </div>
+        <div class="row mb" style="align-items:center">
+          <input type="text" id="glFilter" style="max-width:260px"
+                 placeholder="用語・説明・SQL・テーブル名で絞り込み">
+          <span class="small muted" id="glCount"></span>
+          <div class="spacer"></div>
+          <button class="btn btn--sm" id="glDraft" {{ 'disabled' if not llm_ready }}
+                  title="説明が書かれていてSQL式が空の用語すべてに、AIがSQL式を下書きします">説明からSQL式を下書き</button>
+          <button class="btn btn--sm" id="glVerifyAll" title="全用語のSQL式を実データに当てて確かめます">すべて検証</button>
+          <button class="btn btn--primary btn--sm" id="glSave">保存</button>
+        </div>
+        <div class="md">
+          <div class="md__side">
+            <button class="btn btn--sm" id="glAdd" style="width:100%">＋ 用語を追加</button>
+            <div class="mlist" id="glList"></div>
+          </div>
+          <div class="md__main" id="glEditor"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="sec-ck" class="hidden">
+      <div class="card">
+        <div class="card__desc">
+          <b>一致するはずの2つの数字</b>を登録しておくと、AIがそのテーブルに触れる
+          SQLを実行するたびに自動で突き合わせ、食い違っていたらチャットに警告を出します
+          （例: 入金の合計 = 請求のうち入金済みの合計）。
+          同じ「売上」でも明細から数えるか請求から数えるかで答えが変わる——
+          その食い違いに、聞いた人が気づけるようにする仕組みです。
+          結果はデータが変わるまで記憶されるので、質問のたびに重い集計が走ることはありません。
+        </div>
+        <div class="row mb" style="align-items:center">
+          <span class="small muted" id="ckCount"></span>
+          <div class="spacer"></div>
+          <button class="btn btn--sm" id="ckVerifyAll" title="全ルールをいま実行して、左右の値と差を確かめます">すべて検算</button>
+          <button class="btn btn--primary btn--sm" id="ckSave">保存</button>
+        </div>
+        <div class="md">
+          <div class="md__side">
+            <button class="btn btn--sm" id="ckAdd" style="width:100%">＋ ルールを追加</button>
+            <div class="mlist" id="ckList"></div>
+          </div>
+          <div class="md__main" id="ckEditor"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="sec-ex" class="hidden">
+      <div class="card">
+        <div class="card__desc">
+          正しいと確認済みの質問とSQLの組。そのままAIのお手本になります（最大20件）。
+          <b>説明は任意です。</b>「なぜこの書き方なのか」「どこに気をつけるか」を書いておくと、
+          AIは似た質問のときも同じ勘所を守ります。
+          チャットで回答が正しかったときの「この質問とSQLを例文として保存」からも増えます。
+        </div>
+        <div class="row mb" style="align-items:center">
+          <input type="text" id="exFilter" style="max-width:260px"
+                 placeholder="質問・SQLで絞り込み">
+          <span class="small muted" id="exCount"></span>
+          <div class="spacer"></div>
+          <button class="btn btn--sm" id="exVerifyAll" title="全例文のSQLが実際に通るか確かめます">すべて検証</button>
+          <button class="btn btn--primary btn--sm" id="exSave">保存</button>
+        </div>
+        <div class="md">
+          <div class="md__side">
+            <button class="btn btn--sm" id="exAdd" style="width:100%">＋ 例文を追加</button>
+            <div class="mlist" id="exList"></div>
+          </div>
+          <div class="md__main" id="exEditor"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= ツール ================= -->
+  <div class="tabpane" id="pane-tools">
+    <div class="card">
+      <div class="card__title">ユーザー定義ツール
+        <span class="badge">全DB共通</span></div>
+      <div class="card__desc">
+        AIが呼び出せる専用ツールです。よく聞かれることを登録しておくと、
+        AIが毎回SQLを書き起こさずに済み、答えのぶれもなくなります。<br>
+        <b>特定のDBには属しません。</b>上のDB切替と関係なく、ここには全ツールが並びます。<br>
+        <b>やりたいことを日本語で書くだけで作れます。</b>SQLも設定も要りません。
+        AIが全DBのカタログを見て使うDB・テーブルを自分で決め、SQLを組み立て、
+        実際のデータで動かした結果を見せてから登録します。
+      </div>
+      <div id="toolList"></div>
+      <div class="row mt">
+        <button class="btn btn--primary btn--sm" id="toolWizard">＋ ツールを作る</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card__title">組み込みツール</div>
+      <div class="card__desc">
+        アプリに最初から入っているツールです。ここに出ている説明とパラメータが、
+        そのまま <b>AIに渡っている内容</b>です。展開すると中身を確認できます。<br>
+        説明を書き換えると、AIの「使うかどうか」の判断を調整できます（呼びすぎ・呼ばなすぎの対策）。
+        空欄なら元の説明が使われます。
+      </div>
+      <div class="row mb" style="align-items:center">
+        <input type="text" id="btFilter" style="max-width:280px"
+               placeholder="ツール名・説明で絞り込み">
+        <div class="spacer"></div>
+        <span class="small muted" id="btCount"></span>
+      </div>
+      <div id="builtinList"></div>
+    </div>
+  </div>
+
+  {% if cat_history %}
+  <div class="card mt" id="catHistory">
+    <div class="card__title">用語集・例文の変更履歴</div>
+    <div class="card__desc">
+      チャットからの登録（全ユーザー可）とこの画面での編集の記録です。新しい順に最大50件。
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>日時</th><th>誰が</th><th>操作</th><th>内容</th><th>経路</th></tr></thead>
+        <tbody>
+        {% for h in cat_history %}
+          <tr>
+            <td class="small">{{ h.at[:16]|replace('T', ' ') }}</td>
+            <td>{{ h.user }}</td>
+            <td>{{ {'add':'新規','update':'変更','remove':'削除'}[h.op] if h.op in ('add','update','remove') else h.op }}</td>
+            <td class="small">{{ h.summary }}
+              {% if h.op == 'update' and h.before and h.after %}
+                <div class="muted">
+                  {{ (h.before.description or h.before.q or '')|truncate(40) }} →
+                  {{ (h.after.description or h.after.q or '')|truncate(40) }}</div>
+              {% endif %}</td>
+            <td class="small muted">{{ 'チャット' if h.source == 'chat' else 'カタログ' }}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {# 未保存の変更があるときだけ現れる。どこに何件あるかと、まとめて保存する口 #}
+  <div class="savebar hidden" id="savebar">
+    <span class="small" id="savebarText"></span>
+    <button class="btn btn--primary btn--sm" id="saveAll">まとめて保存 (Ctrl+S)</button>
+  </div>
+
+{% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if target %}
+<script>
+window.CAT = {
+  db: {{ target|tojson }},
+  er: {{ er|tojson }},
+  tables: {{ tables|tojson }},
+  dbGlossary: {{ db_glossary|tojson }},
+  examples: {{ examples|tojson }},
+  custom: {{ custom|tojson }},
+  builtin: {{ builtin|tojson }},
+  builtinOverrides: {{ builtin_overrides|tojson }},
+  checks: {{ checks|tojson }},
+  llmReady: {{ llm_ready|tojson }},
+  // グラフ種別ごとの必須項目。種別によって要る欄が違うので、
+  // サーバの定義をそのまま渡して画面側で入力欄を出し分ける
+  chartFields: {{ chart_fields|tojson }},
+  intervals: {{ intervals|tojson }}
+};
+window.MANAGE = { intervals: {{ intervals|tojson }}, refresh: () => loadManage(true) };
+</script>
+<script src="{{ url_for('static', filename='js/er.js') }}"></script>
+<script src="{{ url_for('static', filename='js/manage.js') }}"></script>
+<script src="{{ url_for('static', filename='js/catalog.js') }}"></script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,47 @@
+{% from "_icons.html" import icon %}<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ログイン — {{ app_title }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+{% include "_icons.html" %}
+<div class="loginpage">
+  <div class="loginbox">
+    <div class="brand">
+      {{ icon('spark') }}
+      <h1>{{ app_title }}</h1>
+    </div>
+
+    {% if fatal %}
+      <div class="alert alert--err">{{ fatal }}</div>
+    {% else %}
+      {% for category, message in get_flashed_messages(with_categories=true) %}
+        <div class="alert alert--{{ 'err' if category == 'error' else category }}">{{ message }}</div>
+      {% endfor %}
+
+      <div class="card">
+        <form method="post">
+          <label class="field" for="u">ユーザー名</label>
+          <input id="u" name="username" type="text" autocomplete="username" autofocus required>
+          <div style="height:12px"></div>
+          <label class="field" for="p">パスワード</label>
+          <input id="p" name="password" type="password" autocomplete="current-password" required>
+          <div style="height:16px"></div>
+          <button class="btn btn--primary" style="width:100%">ログイン</button>
+        </form>
+      </div>
+
+      {% if setup_needed %}
+        <div class="alert alert--warn">
+          まだユーザーが登録されていません。次のコマンドで作成してください。
+          <pre class="mono" style="margin:8px 0 0;white-space:pre-wrap">python manage_users.py add &lt;ユーザー名&gt; --admin</pre>
+        </div>
+      {% endif %}
+    {% endif %}
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ table }} — {{ app_title }}{% endblock %}
+{# 別タブで開く読み取り専用のビューア。表そのものに場所を使いたいので、
+   見出しは小さく持ち、画面の幅と高さをいっぱいに使う（CSSの .is-table 参照）。 #}
+{% block body_class %}is-table{% endblock %}
+
+{% block sidebar %}
+<div class="sidebar__section">
+  <div class="sidebar__label">開いているテーブル</div>
+  <div style="font-weight:600">{{ table }}</div>
+  <div class="small muted">{{ db_file }}{% if db_title %}（{{ db_title }}）{% endif %}</div>
+  {% if description %}<div class="small mt">{{ description }}</div>{% endif %}
+  <a class="btn btn--sm mt" style="width:100%"
+     href="{{ url_for('catalog.index') }}?db={{ db_file|urlencode }}#tables">カタログで開く</a>
+</div>
+{% endblock %}
+
+{% block body %}
+<div class="content">
+  {% if error %}
+    <div class="alert alert--err">{{ error }}</div>
+  {% else %}
+  <div class="card">
+    <div class="row" style="align-items:center;gap:10px;flex-wrap:wrap">
+      <div>
+        <div style="font-weight:650;font-size:16px">{{ table }}</div>
+        <div class="small muted" id="countLabel">読み込み中…</div>
+      </div>
+      <div class="spacer"></div>
+      <input type="text" id="q" placeholder="値で絞り込み（全列を対象）" style="width:260px">
+      <select id="size" style="width:auto" title="1ページの行数">
+        {% for n in page_sizes %}<option value="{{ n }}" {{ 'selected' if n == 100 }}>{{ n }}行</option>{% endfor %}
+      </select>
+    </div>
+
+    {# いま効いている絞り込み。1つずつ外せる（中身は table.js が描く） #}
+    <div class="chips mt hidden" id="chips"></div>
+
+    <div class="tablewrap mt" id="tableBox">
+      <div class="small muted" style="padding:10px"><span class="spinner"></span> 読み込み中…</div>
+    </div>
+
+    <div class="row mt" style="align-items:center;gap:8px">
+      <button class="btn btn--sm" id="first" title="最初のページ">≪ 先頭</button>
+      <button class="btn btn--sm" id="prev">前へ</button>
+      <span class="small muted" id="pageLabel">—</span>
+      <button class="btn btn--sm" id="next">次へ</button>
+      <button class="btn btn--sm" id="last" title="最後のページ">末尾 ≫</button>
+      <div class="spacer"></div>
+      <span class="small muted">列名をクリックすると並べ替え</span>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+window.TABLE_INIT = {
+  db: {{ db_file|tojson }},
+  table: {{ table|tojson }},
+  error: {{ (error or '')|tojson }}
+};
+</script>
+<script src="{{ url_for('static', filename='js/table.js') }}"></script>
+{% endblock %}

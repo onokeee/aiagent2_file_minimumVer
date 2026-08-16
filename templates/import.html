@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}データカタログ（取り込み） — {{ app_title }}{% endblock %}
+{# 見出しは置かない。画面の説明はサイドバーの項目にマウスを乗せると出る #}
+
+{% block body %}
+<div class="content content--wide">
+  {# データカタログの一機能。同じタブバーを出して、行き来が同じ画面の中に見えるようにする。
+     他のタブはカタログ画面（DB別）へ、こちらは全DB共通なのでDB切替は出さない。 #}
+  <div class="tabs tabs--bar">
+    <a class="tab" href="{{ url_for('catalog.index') }}#tab=tables">DB・テーブル</a>
+    <a class="tab" href="{{ url_for('catalog.index') }}#tab=er">結合・ER図</a>
+    <a class="tab" href="{{ url_for('catalog.index') }}#tab=glossary">用語集・例文</a>
+    <a class="tab" href="{{ url_for('catalog.index') }}#tab=tools">ツール</a>
+    <button class="tab is-active">取り込み</button>
+  </div>
+
+  <!-- ================= 取り込み ================= -->
+  <div id="pane-file">
+    <details class="acc" {{ 'open' if dirs|selectattr('ok', 'equalto', false)|list }}>
+      <summary>取り込み元フォルダ
+        <span class="badge">{{ dirs|length }}</span>
+        {% set ng = dirs|selectattr('ok', 'equalto', false)|list %}
+        {% if ng %}<span class="badge badge--err">{{ ng|length }}件に問題あり</span>{% endif %}
+      </summary>
+      <div class="acc__body">
+        <div id="dirList"></div>
+        {% if user.is_admin and dirs_editable %}
+        <div class="row mt">
+          <input type="text" id="newDir" class="grow"
+                 placeholder="追加するフォルダのパス（例: /mnt/real/real2 や \\\\server\\share\\取込）">
+          <button class="btn btn--sm" id="addDir">＋ フォルダを追加</button>
+        </div>
+        <div class="small muted mt">
+          ここに追加したフォルダは <code>data/import_dirs.yaml</code> に保存され、再起動後も残ります。
+          <code>env</code> の <code>IMPORT_DIRS</code> で指定した分は画面からは消せません。
+          <b>追加したフォルダ配下のファイルは全ユーザーが読めるようになります。</b>
+        </div>
+        {% else %}
+        <div class="small muted mt">
+          フォルダの追加・削除は管理者のみです。
+          （<code>env</code> の <code>IMPORT_DIRS</code> でも設定できます）
+        </div>
+        {% endif %}
+      </div>
+    </details>
+
+    <div class="card">
+      <div class="row" style="align-items:center">
+        <div class="card__title" style="margin:0">取り込むファイル</div>
+        <div class="spacer"></div>
+        <button class="btn btn--sm" id="pickServer">サーバのフォルダから選ぶ</button>
+        {% if allow_upload %}
+          <button class="btn btn--sm" id="pickLocal">自分のPCから選ぶ</button>
+          <input type="file" id="localFile" class="hidden"
+                 accept=".csv,.tsv,.txt,.xlsx,.xlsm">
+        {% endif %}
+      </div>
+      <div id="chosen" class="mt">
+        <div class="small muted">まだ選ばれていません。上のボタンからファイルを選んでください。</div>
+      </div>
+      <div id="readOpts" class="row mt hidden">
+        <div id="sheetWrap" class="hidden" style="width:190px">
+          <label class="field">シート</label><select id="sheet"></select>
+        </div>
+        <div id="sepWrap" style="width:190px">
+          <label class="field">区切り文字</label>
+          <select id="delimiter">
+            {% for d in delimiters %}<option>{{ d }}</option>{% endfor %}
+          </select>
+        </div>
+        <div style="width:110px">
+          <label class="field">見出しの行</label>
+          <input type="number" id="headerRow" value="1" min="1" max="50">
+        </div>
+        <button class="btn btn--sm" id="reload">読み直す</button>
+      </div>
+    </div>
+
+    <div id="previewArea"></div>
+  </div>
+
+{% endblock %}
+
+{% block scripts %}
+<!-- サーバのフォルダを辿って選ぶダイアログ -->
+<div class="modal hidden" id="browser">
+  <div class="modal__box">
+    <div class="modal__head">
+      <b>ファイルを選ぶ</b>
+      <div class="spacer"></div>
+      <button class="btn btn--sm btn--ghost" id="browserClose"></button>
+    </div>
+    <div class="modal__crumbs" id="crumbs"></div>
+    <div class="modal__body" id="browserList"></div>
+    <div class="modal__foot small muted">
+      表示されるのは許可された取り込み元フォルダの中だけです（{{ extensions }}）。
+    </div>
+  </div>
+</div>
+
+<script>
+window.IMP = {
+  allowUpload: {{ allow_upload|tojson }},
+  dbFiles: {{ db_files|tojson }},
+  existing: {{ existing|tojson }},
+  manage: {{ manage|tojson }},
+  intervals: {{ intervals|tojson }},
+  modes: {{ modes|tojson }},
+  defaultTs: {{ default_ts|tojson }},
+  maxKeep: {{ max_keep|tojson }},
+  defaultKeep: {{ default_keep|tojson }}
+};
+</script>
+<script src="{{ url_for('static', filename='js/import.js') }}"></script>
+{% endblock %}
