@@ -116,13 +116,15 @@ SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "")
 SMTP_SENDER = os.getenv("SMTP_SENDER", "").strip()
 SMTP_SENDER_NAME = os.getenv("SMTP_SENDER_NAME", "DB分析アシスタント").strip()
 SMTP_TIMEOUT = int(os.getenv("SMTP_TIMEOUT", "20") or 20)
-# 「メール設定」画面で宛先として登録してよいドメイン。
+# 「メール設定」画面で宛先として登録してよいドメイン。ここで直接指定する（env では設定しない）。
 # ここに書いたドメイン以外のアドレスは、そもそも許可リストに追加できない。
-#   SEND_OK_MAIL_DOMAIN="@example.co.jp"     先頭の @ は付けても付けなくてもよい
-#   SEND_OK_MAIL_DOMAIN="a.co.jp;b.co.jp"    複数なら ; か , で区切る
-# 空にすると、この制限だけが外れる（宛先の許可リスト自体は必要なまま）。
+#   "@example.co.jp"    先頭の @ は付けても付けなくてもよい
+#   "a.co.jp;b.co.jp"   複数なら ; か , で区切る
+#   ""                  空にすると、この制限だけが外れる
+#                       （宛先の許可リスト自体は必要なまま）
+_SEND_OK_MAIL_DOMAIN = "@gmail.com"
 SEND_OK_MAIL_DOMAIN = [d.strip().lstrip("@").lower() for d
-                       in re.split(r"[;,]", os.getenv("SEND_OK_MAIL_DOMAIN", ""))
+                       in re.split(r"[;,]", _SEND_OK_MAIL_DOMAIN)
                        if d.strip()]
 
 # 一度に送れる宛先の上限。誤って一斉送信するのを防ぐ。
@@ -138,7 +140,12 @@ SMTP_DRY_RUN = (os.getenv("SMTP_DRY_RUN", "true").strip().lower()
 # 場合は、そのパスまで（末尾の /chat/completions は付けない）で設定する。
 OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "").strip()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini").strip()
+# 既定のモデル。ここで直接指定する（env では設定しない）。
+# 使われるのは次の2通り:
+#   1. 「モデル設定」画面で既定を決めていないときの、チャットの既定モデル
+#   2. 裏方の処理（DBルーター・用語集やツールのAI下書き）。こちらは画面での
+#      選択に関係なく常にこのモデルを使う。安く速いものを指定しておくとよい
+OPENAI_MODEL = "gpt-4o-mini"
 # 画面のプルダウンに出すモデル。空ならAPIの /models から取りに行く。
 #   export OPENAI_MODELS="gpt-4o-mini;gpt-4o;5.6sol"
 OPENAI_MODELS = [m.strip() for m in re.split(r"[;,]", os.getenv("OPENAI_MODELS", ""))
