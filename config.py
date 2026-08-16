@@ -284,9 +284,14 @@ AUTH_ADMIN_GROUP = os.getenv("AUTH_ADMIN_GROUP", "admin").strip()
 
 # 常設の管理者アカウント。LDAPや auth_users.yaml とは別枠で、どのプロバイダを
 # 使っていても必ずログインできる「非常口」。LDAPが落ちても設定画面に入れる。
-#   ADMIN_PASS を設定しないかぎり、このアカウントは無効（空パスワードでは入れない）。
-ADMIN_USER = os.getenv("ADMIN_USER", "admin").strip()
-ADMIN_PASS = os.getenv("ADMIN_PASS", "")
+# ここで直接指定する（env では設定しない）。
+#
+# このアカウントで入ると、データの取り込み・テーブル/DBの削除・メール設定の
+# 変更ができる。変えるときはこの行を書き換える。
+# ADMIN_PASS を空文字にすると、このアカウント自体が無効になる
+# （空パスワードでログインできてしまう事故を防ぐため）。
+ADMIN_USER = "admin"
+ADMIN_PASS = "adminpass"
 
 # http プロバイダ用（社内APIの仕様に合わせる）
 AUTH_API_URL = os.getenv("AUTH_API_URL", "").strip()
